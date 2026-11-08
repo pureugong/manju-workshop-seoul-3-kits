@@ -39,20 +39,20 @@ Run these and make one Korean list.
 1. **Terraform state** (in the kit folder): macOS `./tf.sh state list`, Windows `.\tf.ps1 state list`. Then `./tf.sh plan -destroy -out=tfplan` (Windows `.\tf.ps1 plan -destroy -out=tfplan`) and read how many it will destroy.
 2. **Tagged resources** (also finds things if the kit folder is lost):
    `aws resourcegroupstaggingapi get-resources --tag-filters Key=purpose,Values=manju-workshop-practice --profile mini-th --region ap-northeast-2 --query "ResourceTagMappingList[].ResourceARN" --output text`
-3. **IAM roles** (global): `aws iam get-role --role-name mini-th-api --profile mini-th` and the same for `mini-th-transcribe`. Count a role only if `aws iam list-role-tags --role-name <name> --profile mini-th` shows `purpose=manju-workshop-practice`.
+3. **IAM roles** (global, six): `aws iam get-role --role-name mini-th-api --profile mini-th` and the same for `mini-th-split`, `mini-th-transcribe`, `mini-th-merge`, `mini-th-pipeline` (Step Functions) and `mini-th-events` (EventBridge). Count a role only if `aws iam list-role-tags --role-name <name> --profile mini-th` shows `purpose=manju-workshop-practice`.
 4. **Cost alert**: `aws budgets describe-budget --account-id <account> --budget-name mini-th-monthly --profile mini-th` (the account number comes from `aws sts get-caller-identity --profile mini-th --query Account --output text`).
 
-Say it in Korean, for example: 「강의 키트가 만든 것이 아직 N개 남아 있어요: 파일 보관함(S3) 1개, 함수(Lambda) 2개, 작업 표(DynamoDB) 1개, 토큰 자리(SSM) 2개, 로그 묶음 2개, 역할(IAM) 2개, 비용 알림 1개. 키트 밖의 것은 건드리지 않습니다. 지울까요?」
+Say it in Korean, for example: 「강의 키트가 만든 것이 아직 N개 남아 있어요: 파일 보관함(S3) 1개, 함수(Lambda) 4개, 작업 순서표(Step Functions) 1개, 시작 신호 규칙(EventBridge) 1개, 작업 표(DynamoDB) 1개, 토큰 자리(SSM) 2개, 로그 묶음 4개, 역할(IAM) 6개, 비용 알림 1개. 키트 밖의 것은 건드리지 않습니다. 지울까요?」
 
 ## Step 2: delete (only after 「좋아」 or 「네」)
 
-In the kit folder, apply the destroy plan from Step 1: macOS `./tf.sh apply tfplan`, Windows `.\tf.ps1 apply tfplan`. This removes everything in the Terraform state, including the S3 bucket's files, the Cloudflare token parameters in SSM, the log groups and the cost alert.
+In the kit folder, apply the destroy plan from Step 1: macOS `./tf.sh apply tfplan`, Windows `.\tf.ps1 apply tfplan`. This removes everything in the Terraform state, including the S3 bucket's files, the Step Functions state machine `mini-th-pipeline` and the EventBridge rule `mini-th-uploads`, the Cloudflare token parameters in SSM, the log groups and the cost alert.
 
 If the kit folder (or its state file) is lost: do not delete by hand. Show the tagged list from Step 1 and tell the student to show it to the instructor.
 
 ## Step 3: check that nothing is left
 
-Run Step 1's commands again. `state list` must be empty, and the tagged list, the two roles and the budget must be gone. The tag list can lag for a minute after a delete; check once more after a minute. If anything is still there, show its name in the chat and tell the student to show it to the instructor.
+Run Step 1's commands again. `state list` must be empty, and the tagged list, the six roles and the budget must be gone. The tag list can lag for a minute after a delete; check once more after a minute. If anything is still there, show its name in the chat and tell the student to show it to the instructor.
 
 ## Step 4: root access keys
 
@@ -86,7 +86,7 @@ Say: 「요금은 하루쯤 늦게 보이기도 해요. 내일 AWS 콘솔의 Bil
 |---|---|
 | AWS 키트가 만든 것(Terraform) | 지움, 남은 것 0개 |
 | 태그로 찾은 남은 것 | 0개 |
-| 역할(IAM) mini-th-api, mini-th-transcribe | 없음 |
+| 역할(IAM) mini-th-api, split, transcribe, merge, pipeline, events | 없음 |
 | 비용 알림 mini-th-monthly | 없음 |
 | 루트 액세스 키 | 없음 |
 | Cloudflare 하루용 토큰 | 대시보드에서 지움(직접) |
