@@ -1,0 +1,46 @@
+# A kit change merged to master (or a manual run): scan again, zip each kit folder, make the next seoul-3-vN Release.
+# The kits and .github/build.py come only from the course repository's publish-kits.py PRs; this workflow never reads
+# that repository. Private host rules are not here: the course repository applies them before each publish PR.
+name: release
+
+on:
+  push:
+    branches: [master]
+    paths: ["setup-check/**", "cleanup/**", "extras/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Skipped (no minutes used) while the repository is private.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Next tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh release list -R "$GITHUB_REPOSITORY" -L 100 --json tagName -q '.[].tagName' \
+            | sed -n 's/^seoul-3-v\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)
+          echo "tag=seoul-3-v$(( ${last:-0} + 1 ))" >> "$GITHUB_OUTPUT"
+
+      - name: Scan and zip
+        run: python3 .github/build.py zip dist "${{ steps.tag.outputs.tag }}"
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          gh release create "$TAG" dist/*.zip -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "$TAG" --notes-file dist/NOTES.md --latest
