@@ -1,0 +1,4 @@
+#!/bin/sh
+# git pre-commit (installed by mmk-crew setup and by the SessionStart hook): RULES.md's machine-checkable rules on what
+# is staged. No model, no tokens. Bypass only with the owner's say-so: git commit --no-verify.
+exec python3 "$(git rev-parse --show-toplevel)/.claude/hooks/guard.py" staged

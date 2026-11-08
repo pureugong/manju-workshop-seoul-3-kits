@@ -1,0 +1,29 @@
+#!/bin/sh
+# git post-merge (after `git merge` / `git pull`): stale branches, in the background so the merge is not held up.
+# Local every time; origin at most once a day (it needs the network and gh). No GitHub Actions: origin only gets
+# stale branches from cloud work, and that work ends in a merge here. Install once per clone:
+#   ln -sf ../../.claude/hooks/post-merge .git/hooks/post-merge
+# Output: .claude/state/prune.out; deletions with their sha: .claude/state/prune.log
+# (the main checkout, also from a worktree: one coord.py, one log)
+top=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)") || exit 0
+state="$top/.claude/state"
+mkdir -p "$state"
+remote=
+if [ -z "$(find "$state/prune.remote" -mtime -1 2>/dev/null)" ]; then remote=1; touch "$state/prune.remote"; fi
+(
+  python3 "$top/.claude/hooks/coord.py" prune --local
+  [ -n "$remote" ] && python3 "$top/.claude/hooks/coord.py" prune --remote
+  # issues a PR closed with "Closes #N" but merged outside the default branch (GitHub leaves those open)
+  [ -n "$remote" ] && python3 "$top/.claude/hooks/coord.py" close-merged
+  # owner board (coord.json "board": {"owner", "number"}): missing cards added, Status computed from facts (claims,
+  # open PRs, open/closed). Every merge: one GraphQL read, writes only cards that differ. Covers every repo on the
+  # one board without GitHub Actions or per-repo auto-add workflows (free plan: one).
+  if [ -f "$HOME/.mmk-crew/scripts/board.py" ]; then
+    b=$(python3 -c "import json;c=json.load(open('$top/.claude/coord.json'));b=c.get('board') or {};print(b.get('owner',''),b.get('number',''),c.get('repo',''))" 2>/dev/null)
+    set -- $b
+    [ $# -eq 3 ] && python3 -I "$HOME/.mmk-crew/scripts/board.py" sync --owner "$1" --number "$2" --repo "$3"
+  fi
+  # status labels: none on closed issues, one on open ones (reports and watch scripts read them; the board does not)
+  [ -n "$remote" ] && python3 "$top/.claude/hooks/coord.py" labels
+) >> "$state/prune.out" 2>&1 &
+exit 0

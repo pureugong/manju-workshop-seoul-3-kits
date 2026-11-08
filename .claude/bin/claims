@@ -1,0 +1,3 @@
+#!/bin/sh
+# the open claims (docs/agents/CLOUD.md)
+exec python3 "$(dirname "$0")/../hooks/coord.py" list

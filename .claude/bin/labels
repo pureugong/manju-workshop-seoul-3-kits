@@ -1,0 +1,3 @@
+#!/bin/sh
+# status labels match the issue state (closed: none, open: one); see docs/agents/CLOUD.md
+exec python3 "$(dirname "$0")/../hooks/coord.py" labels "$@"

@@ -1,0 +1,6 @@
+#!/bin/sh
+# git pre-push (installed by mmk-crew setup and by the SessionStart hook): the guard over everything this push adds
+# since origin/main, so a commit made with --no-verify or before the hook existed is still caught.
+top=$(git rev-parse --show-toplevel)
+git rev-parse --verify -q origin/main >/dev/null || exit 0
+exec python3 "$top/.claude/hooks/guard.py" range origin/main

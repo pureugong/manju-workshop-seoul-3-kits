@@ -1,0 +1,3 @@
+#!/bin/sh
+# the last step of an issue (coordination): status:review on it and the "ready: PR #M" comment; see docs/agents/CLOUD.md
+exec python3 "$(dirname "$0")/../hooks/coord.py" ready "$@"

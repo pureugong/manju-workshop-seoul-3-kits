@@ -1,0 +1,3 @@
+#!/bin/sh
+# release an issue (coordination): see docs/agents/CLOUD.md
+exec python3 "$(dirname "$0")/../hooks/coord.py" release "$@"

@@ -1,0 +1,25 @@
+{
+  "repo": "pureugong/manju-workshop-seoul-3-kits",
+  "mode": "log",
+  "maxCloud": 1,
+  "board": {
+    "owner": "",
+    "number": 0
+  },
+  "hot": [],
+  "free": [
+    "docs/screenshots/",
+    "docs/agents/GLOSSARY.md",
+    "docs/400-devlog/"
+  ],
+  "guards": {
+    "migrations": [
+      "**/migrations/**",
+      "**/migrate/**",
+      "db/schema/**"
+    ],
+    "maxFileMB": 5,
+    "off": []
+  },
+  "deployPattern": "\\bgh release (create|edit|delete|upload)\\b|\\bgh workflow run\\b|\\bgh repo edit\\b.*--visibility|\\bpublish-kits\\.py (pr|release)\\b"
+}

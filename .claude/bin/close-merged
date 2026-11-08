@@ -1,0 +1,3 @@
+#!/bin/sh
+# close the issues PRs merged outside the default branch name with "Closes" (epics, stacked PRs); see docs/agents/CLOUD.md
+exec python3 "$(dirname "$0")/../hooks/coord.py" close-merged "$@"
