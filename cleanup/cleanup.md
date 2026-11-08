@@ -41,18 +41,19 @@ Run these and make one Korean list.
    `aws resourcegroupstaggingapi get-resources --tag-filters Key=purpose,Values=manju-workshop-practice --profile mini-th --region ap-northeast-2 --query "ResourceTagMappingList[].ResourceARN" --output text`
 3. **IAM roles** (global, six): `aws iam get-role --role-name mini-th-api --profile mini-th` and the same for `mini-th-split`, `mini-th-transcribe`, `mini-th-merge`, `mini-th-pipeline` (Step Functions) and `mini-th-events` (EventBridge). Count a role only if `aws iam list-role-tags --role-name <name> --profile mini-th` shows `purpose=manju-workshop-practice`.
 4. **Cost alert**: `aws budgets describe-budget --account-id <account> --budget-name mini-th-monthly --profile mini-th` (the account number comes from `aws sts get-caller-identity --profile mini-th --query Account --output text`).
+5. **Token slots (SSM)**, names only, never the values: `aws ssm get-parameters-by-path --path /mini-th --recursive --profile mini-th --region ap-northeast-2 --query "Parameters[].Name" --output text`. Expect `/mini-th/cloudflare/account-id`, `/mini-th/cloudflare/api-token`, and, with a kit that has the 3부 Grafana connection, `/mini-th/grafana/otlp-endpoint` and `/mini-th/grafana/otlp-headers` (they exist even if Grafana was never connected; then their value is just `not-set`). They are in the Terraform state, so Step 2 removes them. Never add `--with-decryption` and never print a value.
 
-Say it in Korean, for example: 「강의 키트가 만든 것이 아직 N개 남아 있어요: 파일 보관함(S3) 1개, 함수(Lambda) 4개, 작업 순서표(Step Functions) 1개, 시작 신호 규칙(EventBridge) 1개, 작업 표(DynamoDB) 1개, 토큰 자리(SSM) 2개, 로그 묶음 4개, 역할(IAM) 6개, 비용 알림 1개. 키트 밖의 것은 건드리지 않습니다. 지울까요?」
+Say it in Korean, for example: 「강의 키트가 만든 것이 아직 N개 남아 있어요: 파일 보관함(S3) 1개, 함수(Lambda) 4개, 작업 순서표(Step Functions) 1개, 시작 신호 규칙(EventBridge) 1개, 작업 표(DynamoDB) 1개, 토큰 자리(SSM) 4개(Cloudflare 2개, Grafana 2개), 로그 묶음 4개, 역할(IAM) 6개, 비용 알림 1개. 키트 밖의 것은 건드리지 않습니다. 지울까요?」
 
 ## Step 2: delete (only after 「좋아」 or 「네」)
 
-In the kit folder, apply the destroy plan from Step 1: macOS `./tf.sh apply tfplan`, Windows `.\tf.ps1 apply tfplan`. This removes everything in the Terraform state, including the S3 bucket's files, the Step Functions state machine `mini-th-pipeline` and the EventBridge rule `mini-th-uploads`, the Cloudflare token parameters in SSM, the log groups and the cost alert.
+In the kit folder, apply the destroy plan from Step 1: macOS `./tf.sh apply tfplan`, Windows `.\tf.ps1 apply tfplan`. This removes everything in the Terraform state, including the S3 bucket's files, the Step Functions state machine `mini-th-pipeline` and the EventBridge rule `mini-th-uploads`, the token parameters in SSM (Cloudflare, and Grafana in newer kits), the log groups and the cost alert.
 
 If the kit folder (or its state file) is lost: do not delete by hand. Show the tagged list from Step 1 and tell the student to show it to the instructor.
 
 ## Step 3: check that nothing is left
 
-Run Step 1's commands again. `state list` must be empty, and the tagged list, the six roles and the budget must be gone. The tag list can lag for a minute after a delete; check once more after a minute. If anything is still there, show its name in the chat and tell the student to show it to the instructor.
+Run Step 1's commands again. `state list` must be empty, and the tagged list, the six roles, the budget and the `/mini-th` SSM names must be gone. The tag list can lag for a minute after a delete; check once more after a minute. If anything is still there, show its name in the chat and tell the student to show it to the instructor.
 
 ## Step 4: root access keys
 
@@ -65,9 +66,13 @@ Run `aws iam list-access-keys --profile mini-th`. The workshop never creates one
 
 ## Step 6: Grafana (the student clicks)
 
-1. If an access token (Access Policy token) was made during the workshop, open https://grafana.com in the default browser and say: 「오른쪽 위 My account 로 Grafana Cloud Portal 을 열고, 왼쪽 메뉴 Security 아래 Access Policies 에서 오늘 만든 정책을 열고, 토큰 줄 오른쪽의 메뉴에서 삭제를 눌러 주세요.」 The student deletes it, and also the saved entry in their password manager; you never handle the token. If the student cannot find the delete option, ask them to show the instructor; do not guess button names.
+1. If an access token (Access Policy token) was made during the workshop, open https://grafana.com in the default browser and say: 「오른쪽 위 My account 로 Grafana Cloud Portal 을 열고, 왼쪽 메뉴 Security 아래 Access Policies 에서 오늘 만든 정책 카드의 「1 token」을 눌러 펼치고, 토큰 줄 오른쪽의 Delete, 이어서 같은 자리의 Delete token 을 눌러 주세요. 카드 맨 위의 Delete 는 정책 전체를 지우는 단추예요. 다 지운 뒤 새로 고침하면 No tokens 가 보입니다.」 The student deletes it, and also the saved entry in their password manager; you never handle the token. If the student cannot find the delete option, ask them to show the instructor; do not guess button names.
 2. Log shipping settings: search the kit folder for `grafana` or `loki` (for example in `web/.env.local` or `infra/*.tf`). Settings that live in Lambda environment variables or SSM are already gone with Step 2; list anything left in local files and offer to remove it.
 3. The 3부 Grafana MCP connection (`.mcp.json` in their 3부 folder) can stay. Mention once that they can delete that file if they no longer want the connection.
+4. **Alert rules and contact points made during the workshop.** Ask first: 「오늘 Grafana 에 만든 알림 규칙이 있나요? 남겨 두셔도 되지만, 앱을 내렸으니 지우는 걸 권해요. 그대로 두면 로그가 끊겨 『데이터 없음』 알림 메일이 오기도 해요.」 Default is to delete; keep them only if the student says so.
+   - If the Grafana MCP is connected (the 3부 `.mcp.json`), list the alert rules with `alerting_manage_rules` (title, folder, when it was made) and ask the student which ones they made today. Show the list and ask 「지울까요?」, then delete only those, one at a time, through the same tool. If the tool cannot delete, fall through to the browser way.
+   - Otherwise, or for contact points (the MCP can only read those), open the student's Grafana in the default browser (`https://<their stack>.grafana.net/alerting/list`; ask the student for the stack address or let them open it from https://grafana.com) and say: 「Alerting 아래 Alert rules 에서 오늘 만든 규칙의 메뉴로 삭제해 주세요. 받는 곳(Contact points)을 새로 만들었다면 그것도 지워 주세요.」 Never touch rules the student did not make today.
+5. Logs already sent to Grafana Cloud are deleted by Grafana after 14 days (free plan). Mention it in one line; nothing to do.
 
 ## Step 7: sign out
 
@@ -91,6 +96,8 @@ Say: 「요금은 하루쯤 늦게 보이기도 해요. 내일 AWS 콘솔의 Bil
 | 루트 액세스 키 | 없음 |
 | Cloudflare 하루용 토큰 | 대시보드에서 지움(직접) |
 | Grafana 토큰, 로그 설정 | 지움(직접) / 없음 |
+| Grafana 알림 규칙, 받는 곳 | 지움 / 남김(원해서) / 없음 |
+| 토큰 자리(SSM) Cloudflare, Grafana | 없음 |
 | AWS 로그아웃 | 확인 |
 | GitHub CLI 로그인 | 유지(원하면 로그아웃) |
 
