@@ -24,6 +24,7 @@ The student may paste one line asking you to download `cleanup.zip` and follow i
 - **Show the list before deleting and ask 「지울까요?」.** Delete only after a clear yes.
 - The student never types in the terminal. Run commands yourself, in the app's visible terminal tab when progress matters (with input blocked), otherwise in the background; show results in the chat. Open web pages in the computer's **default browser**, one tab each (Windows `Start-Process "<URL>"`, macOS `open "<URL>"`), never the app's built-in browser.
 - Never ask for, accept or show passwords, tokens or keys. Never create access keys.
+- Never read, print, search or copy the 3부 practice app's connection file `~/.manju-practice/grafana.env` (Windows `%USERPROFILE%\.manju-practice\grafana.env`). You may only check whether it exists and, after a yes, delete it (Step 7).
 - AWS commands use `--profile mini-th --region ap-northeast-2` (`mini-th` is only the profile name; the workshop used the root account).
 - If something fails or looks unexpected, stop and tell the student to show it to the instructor. Do not try workarounds that delete more.
 
@@ -74,13 +75,24 @@ Run `aws iam list-access-keys --profile mini-th`. The workshop never creates one
    - Otherwise, or for contact points (the MCP can only read those), open the student's Grafana in the default browser (`https://<their stack>.grafana.net/alerting/list`; ask the student for the stack address or let them open it from https://grafana.com) and say: 「Alerting 아래 Alert rules 에서 오늘 만든 규칙의 메뉴로 삭제해 주세요. 받는 곳(Contact points)을 새로 만들었다면 그것도 지워 주세요.」 Never touch rules the student did not make today.
 5. Logs already sent to Grafana Cloud are deleted by Grafana after 14 days (free plan). Mention it in one line; nothing to do.
 
-## Step 7: sign out
+## Step 7: the 3부 practice app on this computer
+
+The 3부 shop app (「만쥬 간식 가게」, folder `ops-practice-app`) ran on this computer, not on AWS. It saved the Grafana connection outside its folder.
+
+1. **Is the shop app still running?** Look for a listening port from 5180 up (the app takes the next number if 5180 is busy): macOS `lsof -nP -iTCP:5180-5189 -sTCP:LISTEN`, Windows `Get-NetTCPConnection -State Listen -LocalPort 5180..5189`. For each, check the process is `node server.js` started from an `ops-practice-app` folder (macOS `ps -o pid=,command= -p <pid>` and `lsof -a -p <pid> -d cwd -Fn`; Windows `Get-CimInstance Win32_Process -Filter "ProcessId=<pid>"` and read `CommandLine`). Anything else on those ports is not ours; leave it alone.
+2. **Remove the Grafana connection.**
+   - If the app is running, open its screen (`http://localhost:<port>`) in the default browser and say: 「가게 화면 오른쪽 『Grafana 연결』 칸의 『연결 끊기(토큰 지우기)』를 눌러 주세요. 저장해 둔 연결 정보 파일이 지워집니다.」 Then confirm with `GET http://localhost:<port>/api/status` that `grafana` is no longer connected. If the student cannot find the button, you may call `DELETE http://localhost:<port>/api/grafana` yourself (it deletes the file; it never shows the token).
+   - If the app is not running, check only whether the file exists (macOS `test -f ~/.manju-practice/grafana.env && echo yes`, Windows `Test-Path "$env:USERPROFILE\.manju-practice\grafana.env"`). Never open it. If it exists, ask 「3부 가게 앱의 Grafana 연결 정보 파일이 남아 있어요. 지울까요?」 and only on yes delete that one file (macOS `rm ~/.manju-practice/grafana.env`, Windows `Remove-Item "$env:USERPROFILE\.manju-practice\grafana.env"`). Leave the `.manju-practice` folder itself.
+3. **Stop the shop app.** Only the process you confirmed in 1: macOS `kill <pid>`, Windows `Stop-Process -Id <pid>`. Never stop by name pattern.
+4. **The practice repository.** If 3부 made a private GitHub repository for the PR practice (`manju-practice-app`, or with `-2`), say: 「3부 PR 연습용 비공개 저장소(manju-practice-app)는 내 GitHub 에 남아 있어요. 그대로 두셔도 되고, 지우려면 GitHub 의 저장소 Settings 맨 아래 Delete this repository 에서 직접 지워 주세요.」 Do not delete it yourself. Check only with `gh repo view manju-practice-app --json name,visibility` if `gh` is logged in.
+
+## Step 8: sign out
 
 1. **AWS**: `aws logout --profile mini-th`, then `aws sts get-caller-identity --profile mini-th` must fail. Say 「AWS 로그아웃 확인했어요.」
 2. **GitHub CLI**: ask 「GitHub CLI 로그인은 계속 쓰셔도 돼요. 로그아웃할까요?」 Default is to keep it. Only on yes: `gh auth logout --hostname github.com`.
-3. Stop what the hands-on started on this computer: the screen server (`npm run dev`) if it is still running. Docker Desktop can be quit from its menu if they do not need it.
+3. Stop what the 2부 hands-on started on this computer: the 미니 전사 허브 screen server (`npm run dev` in `aws-iac-starter/web`) if it is still running, found the same way as Step 7 (port 3000 up, confirm the command and folder first, then stop that process only). Docker Desktop can be quit from its menu if they do not need it.
 
-## Step 8: costs
+## Step 9: costs
 
 Say: 「요금은 하루쯤 늦게 보이기도 해요. 내일 AWS 콘솔의 Billing and Cost Management 에서 이번 달 요금을 한 번 봐 주세요.」 Open https://console.aws.amazon.com/billing/home in the default browser if they want to look now.
 
@@ -98,6 +110,9 @@ Say: 「요금은 하루쯤 늦게 보이기도 해요. 내일 AWS 콘솔의 Bil
 | Grafana 토큰, 로그 설정 | 지움(직접) / 없음 |
 | Grafana 알림 규칙, 받는 곳 | 지움 / 남김(원해서) / 없음 |
 | 토큰 자리(SSM) Cloudflare, Grafana | 없음 |
+| 3부 가게 앱 Grafana 연결 정보 | 지움 / 없음 |
+| 3부 가게 앱 서버, 2부 화면 서버 | 멈춤 / 꺼져 있음 |
+| 3부 PR 연습 저장소 | 남김(원하면 직접 지움) / 없음 |
 | AWS 로그아웃 | 확인 |
 | GitHub CLI 로그인 | 유지(원하면 로그아웃) |
 
