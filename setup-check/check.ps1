@@ -151,6 +151,72 @@ foreach ($line in $Tools) {
   $rows += "| $label | $now | $minShow | $result | $fix |"
 }
 
+# AWS 리전 점검: 서울은 강제가 아닙니다. 내 계정이 사용하는 리전에서 실습 서비스가 다 되면 통과입니다.
+# 새 가입 방식(프로젝트) 계정은 서울이 거절되고(SCP RegionFloor) 시드니(ap-southeast-2) 같은 한 리전만 됩니다.
+# 읽기만 하는 호출(list, describe)만 합니다. 아무것도 만들거나 바꾸지 않습니다.
+$awsP = if ($env:AWS_PROFILE) { $env:AWS_PROFILE } else { 'mini-th' }
+$regionRows = @()
+$regionBlocked = @()
+$regionUnknown = @()
+$regionNote = ''
+$regionVerdict = ''
+$regionName = ''
+$regionFrom = ''
+function Test-AwsCall([string]$svc, [string[]]$awsArgs) {
+  $env:AWS_MAX_ATTEMPTS = '1'
+  $out = (& aws @awsArgs --profile $awsP --cli-connect-timeout 10 --cli-read-timeout 20 --output text 2>&1 | Out-String)
+  $rc = $LASTEXITCODE
+  Remove-Item Env:AWS_MAX_ATTEMPTS -ErrorAction SilentlyContinue
+  if ($rc -eq 0) { $script:regionRows += "| $svc | 됨 | - |"; return }
+  $m = [regex]::Match($out, 'service control policy|RegionFloor|AccessDenied[A-Za-z]*|not authorized|explicit deny|OptInRequired|UnrecognizedClient[A-Za-z]*|InvalidClientTokenId', 'IgnoreCase')
+  if ($m.Success) {
+    $why = $m.Value
+    if ($out -match 'service control policy|RegionFloor') { $why = '계정 정책(SCP)이 이 리전을 거절' }
+    $script:regionRows += "| $svc | 막힘 | $why |"
+    $script:regionBlocked += $svc
+  } else {
+    $short = ($out -replace '\s+', ' ').Trim()
+    if ($short.Length -gt 80) { $short = $short.Substring(0, 80) }
+    $script:regionRows += "| $svc | 확인 못 함 | $short |"
+    $script:regionUnknown += $svc
+  }
+}
+$acct = ''
+if (Get-Command aws -ErrorAction SilentlyContinue) {
+  $acct = (& aws sts get-caller-identity --profile $awsP --query Account --output text 2>$null | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0) { $acct = '' }
+}
+if ($acct) {
+  if ($env:AWS_REGION) {
+    $regionName = $env:AWS_REGION; $regionFrom = 'AWS_REGION 환경 변수'
+  } else {
+    $regionName = (& aws configure get region --profile $awsP 2>$null | Out-String).Trim()
+    $regionFrom = "프로필 $awsP 에 저장된 값"
+    if (-not $regionName) { $regionName = 'ap-northeast-2'; $regionFrom = '저장된 값이 없어 기본값(서울)' }
+  }
+  Test-AwsCall 'S3' @('s3api', 'list-buckets', '--max-items', '1', '--region', $regionName)
+  Test-AwsCall 'Lambda(Function URL)' @('lambda', 'list-functions', '--max-items', '1', '--region', $regionName)
+  Test-AwsCall 'DynamoDB' @('dynamodb', 'list-tables', '--max-items', '1', '--region', $regionName)
+  Test-AwsCall 'Step Functions' @('stepfunctions', 'list-state-machines', '--max-results', '1', '--region', $regionName)
+  Test-AwsCall 'EventBridge' @('events', 'list-rules', '--limit', '1', '--region', $regionName)
+  Test-AwsCall 'SSM Parameter Store' @('ssm', 'describe-parameters', '--max-results', '1', '--region', $regionName)
+  Test-AwsCall 'CloudWatch Logs' @('logs', 'describe-log-groups', '--limit', '1', '--region', $regionName)
+  Test-AwsCall 'Budgets' @('budgets', 'describe-budgets', '--account-id', $acct, '--max-results', '1')
+  if ($regionBlocked.Count -eq 0 -and $regionUnknown.Count -eq 0) {
+    $regionVerdict = "리전 판정: $regionName 에서 실습 서비스가 모두 됩니다. 이 리전으로 진행"
+  } elseif ($regionBlocked.Count -gt 0) {
+    $regionVerdict = "리전 판정: $regionName 에서 막힌 서비스 $($regionBlocked.Count)개($($regionBlocked -join ', '))"
+    $remaining++
+    $planList += "[리전] $regionName 에서 $($regionBlocked -join ', ') 가 막힘: 계정이 사용하는 리전으로 프로필 리전을 바꾸고 다시 점검"
+    $regionNote = "새 가입 방식 계정이면 서울(ap-northeast-2)이 막히고 한 리전만 됩니다(한국 주소는 보통 시드니 ap-southeast-2). 그 리전을 저장하고 다시 점검하세요: aws configure set region ap-southeast-2 --profile $awsP. 「고급 기능 활성화」, 「플랜 업그레이드」는 실습에 필요 없고 본인이 정할 일입니다."
+  } else {
+    $regionVerdict = "리전 판정: $regionName 에서 확인 못 한 서비스 $($regionUnknown.Count)개($($regionUnknown -join ', ')). 로그인이 만료됐거나 인터넷 문제일 수 있어요. 다시 로그인한 뒤 점검"
+    $manual += "AWS 리전 점검: $($regionUnknown -join ', ') 확인 못 함(다시 로그인한 뒤 점검)"
+  }
+} else {
+  $regionVerdict = '리전 점검: AWS 로그인 뒤에 다시 점검하면 합니다(판정에 세지 않음)'
+}
+
 if ($Plan) {
   Write-Output '설치 모드 연습 실행입니다. 아무것도 설치하지 않았습니다.'
   Write-Output ''
@@ -163,6 +229,17 @@ if ($Plan) {
 Write-Output '| 도구 | 지금 버전 | 필요 버전 | 결과 | 고칠 것 |'
 Write-Output '|---|---|---|---|---|'
 $rows | ForEach-Object { Write-Output $_ }
+Write-Output ''
+if ($regionRows.Count -gt 0) {
+  Write-Output "AWS 리전 점검($regionName, $regionFrom. 읽기만 했습니다):"
+  Write-Output ''
+  Write-Output '| 서비스 | 결과 | 내용 |'
+  Write-Output '|---|---|---|'
+  $regionRows | ForEach-Object { Write-Output $_ }
+  Write-Output ''
+}
+Write-Output $regionVerdict
+if ($regionNote) { Write-Output $regionNote }
 Write-Output ''
 if ($manual.Count -gt 0) {
   Write-Output '사람이 직접 확인할 것:'

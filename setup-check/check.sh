@@ -143,6 +143,66 @@ for line in "${TOOLS[@]}"; do
   rows+=("| ${label} | ${now} | ${min:--} | ${result} | ${fix:--} |")
 done
 
+# AWS 리전 점검: 서울은 강제가 아닙니다. 내 계정이 사용하는 리전에서 실습 서비스가 다 되면 통과입니다.
+# 새 가입 방식(프로젝트) 계정은 서울이 거절되고(SCP RegionFloor) 시드니(ap-southeast-2) 같은 한 리전만 됩니다.
+# 읽기만 하는 호출(list, describe)만 합니다. 아무것도 만들거나 바꾸지 않습니다.
+AWS_P="${AWS_PROFILE:-mini-th}"
+region_rows=()
+region_note=""
+region_verdict=""
+aws_try() { # 서비스 이름, 명령 인자... → 됨 / 막힘 / 확인 못 함
+  local svc="$1"; shift
+  local out rc
+  out=$(AWS_MAX_ATTEMPTS=1 aws "$@" --profile "$AWS_P" --cli-connect-timeout 10 --cli-read-timeout 20 --output text 2>&1 >/dev/null)
+  rc=$?
+  if [ $rc -eq 0 ]; then
+    region_rows+=("| ${svc} | 됨 | - |")
+  elif printf '%s' "$out" | grep -qiE 'service control policy|RegionFloor|AccessDenied|not authorized|explicit deny|OptInRequired|UnrecognizedClient|InvalidClientTokenId'; then
+    if printf '%s' "$out" | grep -qiE 'service control policy|RegionFloor'; then
+      why="계정 정책(SCP)이 이 리전을 거절"
+    else
+      why=$(printf '%s' "$out" | grep -oiE 'AccessDenied[A-Za-z]*|not authorized|OptInRequired|UnrecognizedClient[A-Za-z]*|InvalidClientTokenId' | head -n 1)
+    fi
+    region_rows+=("| ${svc} | 막힘 | ${why} |")
+    region_blocked+=("${svc}")
+  else
+    region_rows+=("| ${svc} | 확인 못 함 | $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-80) |")
+    region_unknown+=("${svc}")
+  fi
+}
+region_blocked=()
+region_unknown=()
+if command -v aws >/dev/null 2>&1 && acct=$(aws sts get-caller-identity --profile "$AWS_P" --query Account --output text 2>/dev/null); then
+  if [ -n "${AWS_REGION:-}" ]; then
+    R="$AWS_REGION"; R_FROM="AWS_REGION 환경 변수"
+  else
+    R=$(aws configure get region --profile "$AWS_P" 2>/dev/null)
+    R_FROM="프로필 ${AWS_P} 에 저장된 값"
+    if [ -z "$R" ]; then R="ap-northeast-2"; R_FROM="저장된 값이 없어 기본값(서울)"; fi
+  fi
+  aws_try "S3" s3api list-buckets --max-items 1 --region "$R"
+  aws_try "Lambda(Function URL)" lambda list-functions --max-items 1 --region "$R"
+  aws_try "DynamoDB" dynamodb list-tables --max-items 1 --region "$R"
+  aws_try "Step Functions" stepfunctions list-state-machines --max-results 1 --region "$R"
+  aws_try "EventBridge" events list-rules --limit 1 --region "$R"
+  aws_try "SSM Parameter Store" ssm describe-parameters --max-results 1 --region "$R"
+  aws_try "CloudWatch Logs" logs describe-log-groups --limit 1 --region "$R"
+  aws_try "Budgets" budgets describe-budgets --account-id "$acct" --max-results 1
+  if [ ${#region_blocked[@]} -eq 0 ] && [ ${#region_unknown[@]} -eq 0 ]; then
+    region_verdict="리전 판정: ${R} 에서 실습 서비스가 모두 됩니다. 이 리전으로 진행"
+  elif [ ${#region_blocked[@]} -gt 0 ]; then
+    region_verdict="리전 판정: ${R} 에서 막힌 서비스 ${#region_blocked[@]}개(${region_blocked[*]})"
+    remaining=$((remaining + 1))
+    plan+=("[리전] ${R} 에서 ${region_blocked[*]} 가 막힘: 계정이 사용하는 리전으로 프로필 리전을 바꾸고 다시 점검")
+    region_note="새 가입 방식 계정이면 서울(ap-northeast-2)이 막히고 한 리전만 됩니다(한국 주소는 보통 시드니 ap-southeast-2). 그 리전을 저장하고 다시 점검하세요: aws configure set region ap-southeast-2 --profile ${AWS_P}. 「고급 기능 활성화」, 「플랜 업그레이드」는 실습에 필요 없고 본인이 정할 일입니다."
+  else
+    region_verdict="리전 판정: ${R} 에서 확인 못 한 서비스 ${#region_unknown[@]}개(${region_unknown[*]}). 로그인이 만료됐거나 인터넷 문제일 수 있어요. 다시 로그인한 뒤 점검"
+    manual+=("AWS 리전 점검: ${region_unknown[*]} 확인 못 함(다시 로그인한 뒤 점검)")
+  fi
+else
+  region_verdict="리전 점검: AWS 로그인 뒤에 다시 점검하면 합니다(판정에 세지 않음)"
+fi
+
 if [ "$MODE" = "plan" ]; then
   echo "설치 모드 연습 실행입니다. 아무것도 설치하지 않았습니다."
   echo
@@ -157,6 +217,17 @@ fi
 echo "| 도구 | 지금 버전 | 필요 버전 | 결과 | 고칠 것 |"
 echo "|---|---|---|---|---|"
 for r in "${rows[@]}"; do echo "$r"; done
+echo
+if [ ${#region_rows[@]} -gt 0 ]; then
+  echo "AWS 리전 점검(${R}, ${R_FROM}. 읽기만 했습니다):"
+  echo
+  echo "| 서비스 | 결과 | 내용 |"
+  echo "|---|---|---|"
+  for r in "${region_rows[@]}"; do echo "$r"; done
+  echo
+fi
+echo "$region_verdict"
+[ -n "$region_note" ] && echo "$region_note"
 echo
 if [ ${#manual[@]} -gt 0 ]; then
   echo "사람이 직접 확인할 것:"
