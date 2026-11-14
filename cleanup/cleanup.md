@@ -20,18 +20,18 @@ The student may paste one line asking you to download `cleanup.zip` and follow i
 
 ## Safety rules (always)
 
-- **Delete only what the workshop kit made**: what is in the kit's Terraform state, or AWS resources tagged `purpose=manju-workshop-practice` (and `project=mini-transcribe-hub`) in `ap-northeast-2`, plus the budget `mini-th-monthly`. Never delete anything else, even if the name looks similar.
+- **Delete only what the workshop kit made**: what is in the kit's Terraform state, or AWS resources tagged `purpose=manju-workshop-practice` (and `project=mini-transcribe-hub`) in the student's region (`<region>`, below), plus the budget `mini-th-monthly`. Never delete anything else, even if the name looks similar.
 - **Show the list before deleting and ask 「지울까요?」.** Delete only after a clear yes.
 - The student never types in the terminal. Run commands yourself, in the app's visible terminal tab when progress matters (with input blocked), otherwise in the background; show results in the chat. Open web pages in the computer's **default browser**, one tab each (Windows `Start-Process "<URL>"`, macOS `open "<URL>"`), never the app's built-in browser.
 - Never ask for, accept or show passwords, tokens or keys. Never create access keys.
 - Never read, print, search or copy the 3부 practice app's connection file `~/.manju-practice/grafana.env` (Windows `%USERPROFILE%\.manju-practice\grafana.env`). You may only check whether it exists and, after a yes, delete it (Step 7).
-- AWS commands use `--profile mini-th --region ap-northeast-2` (`mini-th` is only the profile name; the workshop used the root account).
+- AWS commands use `--profile mini-th --region <region>` (`mini-th` is only the profile name; the workshop used the root account). `<region>` is `AWS_REGION` if set, otherwise the profile's saved region (`aws configure get region --profile mini-th`), and `ap-northeast-2` (Seoul) only when both are empty. Seoul is not required: accounts made with the new AWS sign-up (projects) cannot use Seoul and work in one region such as Sydney `ap-southeast-2`. Never change a saved region to Seoul. `tf.sh` and `tf.ps1` pick the region the same way.
 - If something fails or looks unexpected, stop and tell the student to show it to the instructor. Do not try workarounds that delete more.
 
 ## Step 0: find the kit folder and check the login
 
 1. Find the AWS kit folder `aws-iac-starter` the student used (the one with `infra/terraform.tfstate`). Ask the student where their practice folder is (for example 문서 폴더 안 `만쥬워크샵`), or look for `aws-iac-starter/infra/terraform.tfstate` under their home folder (a few levels only).
-2. Check the AWS login: `aws sts get-caller-identity --profile mini-th`. If it fails because the login expired, log in again the no-question way: `aws configure set region ap-northeast-2 --profile mini-th`, set `AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED=true`, then Windows `$null | & aws login --profile mini-th --region ap-northeast-2`, macOS `aws login --profile mini-th --region ap-northeast-2 </dev/null`. The browser opens by itself; the student approves.
+2. Check the AWS login: `aws sts get-caller-identity --profile mini-th`. If it fails because the login expired, log in again the no-question way: only if `aws configure get region --profile mini-th` is empty, `aws configure set region ap-northeast-2 --profile mini-th`; set `AWS_CLI_AGENT_TOOLKIT_HINT_DISABLED=true`, then Windows `$null | & aws login --profile mini-th --region <region>`, macOS `aws login --profile mini-th --region <region> </dev/null`. The browser opens by itself; the student approves.
 
 ## Step 1: show what is left (nothing is deleted yet)
 
@@ -39,10 +39,10 @@ Run these and make one Korean list.
 
 1. **Terraform state** (in the kit folder): macOS `./tf.sh state list`, Windows `.\tf.ps1 state list`. Then `./tf.sh plan -destroy -out=tfplan` (Windows `.\tf.ps1 plan -destroy -out=tfplan`) and read how many it will destroy.
 2. **Tagged resources** (also finds things if the kit folder is lost):
-   `aws resourcegroupstaggingapi get-resources --tag-filters Key=purpose,Values=manju-workshop-practice --profile mini-th --region ap-northeast-2 --query "ResourceTagMappingList[].ResourceARN" --output text`
+   `aws resourcegroupstaggingapi get-resources --tag-filters Key=purpose,Values=manju-workshop-practice --profile mini-th --region <region> --query "ResourceTagMappingList[].ResourceARN" --output text`
 3. **IAM roles** (global, six): `aws iam get-role --role-name mini-th-api --profile mini-th` and the same for `mini-th-split`, `mini-th-transcribe`, `mini-th-merge`, `mini-th-pipeline` (Step Functions) and `mini-th-events` (EventBridge). Count a role only if `aws iam list-role-tags --role-name <name> --profile mini-th` shows `purpose=manju-workshop-practice`.
 4. **Cost alert**: `aws budgets describe-budget --account-id <account> --budget-name mini-th-monthly --profile mini-th` (the account number comes from `aws sts get-caller-identity --profile mini-th --query Account --output text`).
-5. **Token slots (SSM)**, names only, never the values: `aws ssm get-parameters-by-path --path /mini-th --recursive --profile mini-th --region ap-northeast-2 --query "Parameters[].Name" --output text`. Expect `/mini-th/cloudflare/account-id`, `/mini-th/cloudflare/api-token`, and, with a kit that has the 3부 Grafana connection, `/mini-th/grafana/otlp-endpoint` and `/mini-th/grafana/otlp-headers` (they exist even if Grafana was never connected; then their value is just `not-set`). They are in the Terraform state, so Step 2 removes them. Never add `--with-decryption` and never print a value.
+5. **Token slots (SSM)**, names only, never the values: `aws ssm get-parameters-by-path --path /mini-th --recursive --profile mini-th --region <region> --query "Parameters[].Name" --output text`. Expect `/mini-th/cloudflare/account-id`, `/mini-th/cloudflare/api-token`, and, with a kit that has the 3부 Grafana connection, `/mini-th/grafana/otlp-endpoint` and `/mini-th/grafana/otlp-headers` (they exist even if Grafana was never connected; then their value is just `not-set`). They are in the Terraform state, so Step 2 removes them. Never add `--with-decryption` and never print a value.
 
 Say it in Korean, for example: 「강의 키트가 만든 것이 아직 N개 남아 있어요: 파일 보관함(S3) 1개, 함수(Lambda) 4개, 작업 순서표(Step Functions) 1개, 시작 신호 규칙(EventBridge) 1개, 작업 표(DynamoDB) 1개, 토큰 자리(SSM) 4개(Cloudflare 2개, Grafana 2개), 로그 묶음 4개, 역할(IAM) 6개, 비용 알림 1개. 키트 밖의 것은 건드리지 않습니다. 지울까요?」
 
@@ -89,7 +89,7 @@ The 3부 shop app (「만쥬 간식 가게」, folder `ops-practice-app`) ran on
 ## Step 8: sign out
 
 1. **AWS**: `aws logout --profile mini-th`, then `aws sts get-caller-identity --profile mini-th` must fail. Say 「AWS 로그아웃 확인했어요.」
-2. **GitHub CLI**: ask 「GitHub CLI 로그인은 계속 쓰셔도 돼요. 로그아웃할까요?」 Default is to keep it. Only on yes: `gh auth logout --hostname github.com`.
+2. **GitHub CLI**: ask 「GitHub CLI 로그인은 계속 사용하셔도 돼요. 로그아웃할까요?」 Default is to keep it. Only on yes: `gh auth logout --hostname github.com`.
 3. Stop what the 2부 hands-on started on this computer: the 미니 전사 허브 screen server (`npm run dev` in `aws-iac-starter/web`) if it is still running, found the same way as Step 7 (port 3000 up, confirm the command and folder first, then stop that process only). Docker Desktop can be quit from its menu if they do not need it.
 
 ## Step 9: costs
@@ -119,4 +119,4 @@ Say: 「요금은 하루쯤 늦게 보이기도 해요. 내일 AWS 콘솔의 Bil
 정리 끝: 오늘 AWS 에 만든 것은 모두 내렸어요.
 ```
 
-End with this line: 「앞으로도 AWS 를 계속 쓰실 거면 사전 준비물의 『부록: AWS 를 안전하게 쓰는 법』 페이지를 봐 주세요. 루트 대신 IAM 사용자로 쓰는 방법이 있어요.」
+End with this line: 「앞으로도 AWS 를 계속 사용하실 거면 사전 준비물의 『부록: AWS 를 안전하게 사용하는 법』 페이지를 봐 주세요. 루트 대신 IAM 사용자를 사용하는 방법이 있어요.」
